@@ -15,7 +15,10 @@ export default function Home() {
 
   useEffect(() => {
     fetchTeams();
-    fetchUsers();
+    const token = localStorage.getItem("token");
+    if (token) {
+      fetchUsers();
+    }
   }, []);
 
   const fetchTeams = async () => {
@@ -33,8 +36,8 @@ export default function Home() {
       const res = await api.get("/users");
       setUsers(res.data);
     } catch (err) {
-      console.error(err);
-      toast.error("Не удалось загрузить игроков (требуется авторизация для просмотра списка)");
+      console.warn("Не удалось загрузить игроков:", err?.response?.status);
+      setUsers([]); // просто не показываем игроков, если нет доступа
     }
   };
 
@@ -150,23 +153,29 @@ export default function Home() {
       {/* Список игроков */}
       <div className="bg-white p-6 rounded-2xl shadow-md">
         <h2 className="text-2xl font-semibold mb-4">Список игроков</h2>
-        <ul className="space-y-2">
-          {users.map((user) => (
-            <li
-              key={user.id}
-              className="border p-3 rounded-lg flex justify-between"
-            >
-              <span>
-                {user.name} ({user.email})
-              </span>
-              <span className="text-gray-500">
-                {user.memberships && user.memberships.length > 0
-                  ? user.memberships.find(m => !m.leftAt)?.team?.name || "В команде"
-                  : "Без команды"}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {users.length === 0 ? (
+          <p className="text-gray-500">
+            Только авторизованные пользователи могут видеть игроков
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {users.map((user) => (
+              <li
+                key={user.id}
+                className="border p-3 rounded-lg flex justify-between"
+              >
+                <span>
+                  {user.name} ({user.email})
+                </span>
+                <span className="text-gray-500">
+                  {user.memberships && user.memberships.length > 0
+                    ? user.memberships.find((m) => !m.leftAt)?.team?.name || "В команде"
+                    : "Без команды"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
