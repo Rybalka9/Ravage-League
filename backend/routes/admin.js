@@ -14,34 +14,34 @@ function requireAdmin(req, res, next) {
 }
 
 // ================================
-// Управление лигами
+// Управление дивизионами
 // ================================
-router.post("/leagues", auth, requireAdmin, async (req, res) => {
+router.post("/divisions", auth, requireAdmin, async (req, res) => {
   const { name, prize } = req.body;
 
   if (!name) return res.status(400).json({ error: "Название обязательно" });
 
   try {
-    const league = await prisma.league.create({
+    const division = await prisma.division.create({
       data: { name, prize: prize || 0 },
     });
-    res.status(201).json(league);
+    res.status(201).json(division);
   } catch (err) {
-    console.error("Ошибка при создании лиги:", err);
+    console.error("Ошибка при создании дивизиона:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-router.patch("/leagues/:id", auth, requireAdmin, async (req, res) => {
-  const leagueId = parseInt(req.params.id);
+router.patch("/divisions/:id", auth, requireAdmin, async (req, res) => {
+  const divisionId = parseInt(req.params.id);
   const { name, prize } = req.body;
 
   try {
-    const league = await prisma.league.update({
-      where: { id: leagueId },
+    const division = await prisma.division.update({
+      where: { id: divisionId },
       data: { name, prize },
     });
-    res.json(league);
+    res.json(division);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -51,7 +51,7 @@ router.patch("/leagues/:id", auth, requireAdmin, async (req, res) => {
 // Управление турнирами
 // ================================
 router.post("/tournaments", auth, requireAdmin, async (req, res) => {
-  const { name, leagueId, format, type, startDate, maxTeams, rules } = req.body;
+  const { name, divisionId, format, type, startDate, maxTeams, rules } = req.body;
 
   if (!name || !format || !type || !startDate) {
     return res.status(400).json({ error: "name, format, type, startDate обязательны" });
@@ -61,7 +61,7 @@ router.post("/tournaments", auth, requireAdmin, async (req, res) => {
     const tournament = await prisma.tournament.create({
       data: {
         name,
-        leagueId: leagueId || null,
+        divisionId: divisionId || null,
         format,
         type,
         startDate: new Date(startDate),

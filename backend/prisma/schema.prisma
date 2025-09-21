@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -7,99 +8,169 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ================== ENUMS ==================
+enum Role {
+  player
+  admin
+}
+
+enum MembershipRole {
+  player
+  captain
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  declined
+}
+
+enum MatchResult {
+  teamA
+  teamB
+  draw
+}
+
+enum ReportStatus {
+  pending
+  confirmed
+  rejected
+  finalized
+}
+
+enum TournamentType {
+  fastcup
+  seasonal
+  playoff
+  showmatch
+}
+
+enum TournamentFormat {
+  single_elim
+  double_elim
+  swiss
+}
+
+enum TournamentStatus {
+  upcoming
+  ongoing
+  finished
+  cancelled
+}
+
+enum RegistrationStatus {
+  registered
+  waitlisted
+  withdrawn
+  rejected
+}
+
+enum ComplaintStatus {
+  open
+  resolved
+  dismissed
+}
+
+// ================== MODELS ==================
 model User {
-  id       Int    @id @default(autoincrement())
-  name     String
-  email    String @unique
-  password String
-  role     String @default("player") // "player" | "admin"
-  banned   Boolean @default(false)
+  id                 Int                  @id @default(autoincrement())
+  name               String
+  email              String               @unique
+  password           String
+  role               Role                 @default(player)
+  banned             Boolean              @default(false)
 
   memberships        TeamMembership[]
-  invites            Invite[]            @relation("UserInvites")
+  invites            Invite[]             @relation("UserInvites")
   complaints         Complaint[]
   discussionPosts    DiscussionPost[]
   discussionComments DiscussionComment[]
-  MatchReport        MatchReport[]
+  matchReports       MatchReport[]
 }
 
 model Team {
-  id       Int     @id @default(autoincrement())
-  name     String  @unique
-  banned   Boolean @default(false)
-  leagueId Int?
-  league   League? @relation(fields: [leagueId], references: [id])
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  banned      Boolean   @default(false)
+  divisionId  Int?
+  division    Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
 
   memberships   TeamMembership[]
   invites       Invite[]
   teamStats     TeamStats?
-  matchesA      Match[]                  @relation("TeamAMatches")
-  matchesB      Match[]                  @relation("TeamBMatches")
+  matchesA      Match[]  @relation("TeamAMatches")
+  matchesB      Match[]  @relation("TeamBMatches")
   registrations TournamentRegistration[]
 }
 
-model League {
-  id    Int    @id @default(autoincrement())
-  name  String
-  prize Int
+model Division {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique
+  maxTeams    Int         @default(0) // 0 = безлимит
+  description String?
+  createdAt   DateTime    @default(now())
 
   teams       Team[]
-  matches     Match[]
   tournaments Tournament[]
+  matches     Match[]
 }
 
 model TeamMembership {
-  id       Int       @id @default(autoincrement())
+  id       Int           @id @default(autoincrement())
   userId   Int
   teamId   Int
-  role     String    @default("player") // "captain" | "player"
-  joinedAt DateTime  @default(now())
+  role     MembershipRole @default(player)
+  joinedAt DateTime      @default(now())
   leftAt   DateTime?
 
-  user User @relation(fields: [userId], references: [id])
-  team Team @relation(fields: [teamId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
 }
 
 model Invite {
-  id     Int    @id @default(autoincrement())
+  id     Int          @id @default(autoincrement())
   teamId Int
   userId Int
-  status String @default("pending") // "pending" | "accepted" | "declined"
+  status InviteStatus @default(pending)
 
-  team Team @relation(fields: [teamId], references: [id])
-  user User @relation("UserInvites", fields: [userId], references: [id])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation("UserInvites", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Match {
-  id           Int      @id @default(autoincrement())
-  leagueId     Int?
+  id           Int        @id @default(autoincrement())
+  divisionId   Int?
   tournamentId Int?
   teamAId      Int
   teamBId      Int?
   scheduled    DateTime
-  result       String?
+  result       MatchResult?
+  scoreA       Int?
+  scoreB       Int?
 
-  league      League?       @relation(fields: [leagueId], references: [id])
-  tournament  Tournament?   @relation(fields: [tournamentId], references: [id])
-  teamA       Team          @relation("TeamAMatches", fields: [teamAId], references: [id])
-  teamB       Team?         @relation("TeamBMatches", fields: [teamBId], references: [id])
+  division    Division?   @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  tournament  Tournament? @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  teamA       Team        @relation("TeamAMatches", fields: [teamAId], references: [id])
+  teamB       Team?       @relation("TeamBMatches", fields: [teamBId], references: [id])
   complaints  Complaint[]
-  MatchReport MatchReport[]
+  matchReports MatchReport[]
 }
 
 model MatchReport {
-  id          Int      @id @default(autoincrement())
+  id          Int          @id @default(autoincrement())
   matchId     Int
   reporterId  Int
-  reportedAt  DateTime @default(now())
+  reportedAt  DateTime     @default(now())
   scoreA      Int
   scoreB      Int
-  status      String   @default("pending") // "pending" | "confirmed" | "rejected" | "finalized"
-  confirmedBy Int? // userId who confirmed (second party) — optional
-  finalizedBy Int? // admin who finalized
+  status      ReportStatus @default(pending)
+  confirmedBy Int?
+  finalizedBy Int?
 
-  match    Match @relation(fields: [matchId], references: [id])
-  reporter User  @relation(fields: [reporterId], references: [id])
+  match    Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  reporter User  @relation(fields: [reporterId], references: [id], onDelete: Cascade)
 }
 
 model TeamStats {
@@ -110,23 +181,24 @@ model TeamStats {
   draws  Int @default(0)
   points Int @default(0)
 
-  team Team @relation(fields: [teamId], references: [id])
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 }
 
 model Tournament {
-  id         Int       @id @default(autoincrement())
-  name       String
-  leagueId   Int?
-  format     String
-  type       String
-  status     String    @default("upcoming")
-  startDate  DateTime
-  endDate    DateTime?
-  maxTeams   Int?
-  rules      String?
-  discussion String?
+  id          Int              @id @default(autoincrement())
+  name        String
+  divisionId  Int
+  format      TournamentFormat
+  type        TournamentType
+  status      TournamentStatus @default(upcoming)
+  startDate   DateTime
+  endDate     DateTime?
+  maxTeams    Int?
+  prize       Int?
+  rules       String?
+  discussion  String?
 
-  league          League?                  @relation(fields: [leagueId], references: [id])
+  division        Division   @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   matches         Match[]
   registrations   TournamentRegistration[]
   complaints      Complaint[]
@@ -134,26 +206,28 @@ model Tournament {
 }
 
 model TournamentRegistration {
-  id           Int    @id @default(autoincrement())
+  id           Int                @id @default(autoincrement())
   tournamentId Int
   teamId       Int
-  status       String @default("pending")
+  status       RegistrationStatus @default(registered)
 
-  tournament Tournament @relation(fields: [tournamentId], references: [id])
-  team       Team       @relation(fields: [teamId], references: [id])
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, teamId])
 }
 
 model Complaint {
-  id           Int    @id @default(autoincrement())
+  id           Int             @id @default(autoincrement())
   tournamentId Int?
   matchId      Int?
   userId       Int
   text         String
-  status       String @default("open")
+  status       ComplaintStatus @default(open)
 
-  tournament Tournament? @relation(fields: [tournamentId], references: [id])
-  match      Match?      @relation(fields: [matchId], references: [id])
-  user       User        @relation(fields: [userId], references: [id])
+  tournament Tournament? @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  match      Match?      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model DiscussionPost {
@@ -164,8 +238,8 @@ model DiscussionPost {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tournament Tournament          @relation(fields: [tournamentId], references: [id])
-  user       User                @relation(fields: [userId], references: [id])
+  tournament Tournament          @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   comments   DiscussionComment[]
 }
 
@@ -176,6 +250,6 @@ model DiscussionComment {
   content   String
   createdAt DateTime @default(now())
 
-  post DiscussionPost @relation(fields: [postId], references: [id])
-  user User           @relation(fields: [userId], references: [id])
+  post DiscussionPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

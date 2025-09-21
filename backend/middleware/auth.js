@@ -1,21 +1,37 @@
+// backend/middleware/auth.js
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
+const { PrismaClient } = require("@prisma/client");
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const prisma = new PrismaClient();
 
-function auth(req, res, next) {
-  const header = req.headers["authorization"];
-  if (!header) return res.status(401).json({ error: "Нет токена" });
+async function auth(req, res, next) {
+  const authHeader = req.headers.authorization;
 
-  const token = header.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Неверный формат токена" });
+  if (!authHeader) {
+    return res.status(401).json({ error: "Нет токена" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ error: "Неверный токен" });
+  }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { id, role }
-    next();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "Пользователь не найден" });
+    }
+
+    req.user = user;
+    return next();
   } catch (err) {
-    return res.status(401).json({ error: "Невалидный токен" });
+    console.error("Ошибка авторизации:", err);
+    return res.status(401).json({ error: "Неверный или просроченный токен" });
   }
 }
 

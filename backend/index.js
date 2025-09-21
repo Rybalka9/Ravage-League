@@ -15,6 +15,8 @@ const leaderboardRoutes = require("./routes/leaderboard");
 const discussionsRoutes = require("./routes/discussions");
 const membershipsRoutes = require("./routes/memberships");
 const adminRoutes = require("./routes/admin");
+const divisionsRouter = require("./routes/divisions");
+const bracketRoutes = require("./routes/tournamentBracket");
 
 const app = express();
 
@@ -34,5 +36,9 @@ app.use("/leaderboard", leaderboardRoutes);
 app.use("/discussions", discussionsRoutes);
 app.use("/memberships", membershipsRoutes);
 app.use("/admin", adminRoutes);
+app.use("/divisions", divisionsRouter);
+app.use("/tournaments", bracketRoutes);
+app.use("/teams/memberships", require("./routes/teamMemberships"));
+
 
 app.listen(4000, () => console.log("✅ Backend running on http://localhost:4000"));
