@@ -23,18 +23,24 @@ router.post("/", auth, isAdmin, async (req, res) => {
         name,
         divisionId: parseInt(divisionId),
         type,
-        format: format || "bo1",
+        format: format || "single_elim", // дефолт
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         maxTeams: maxTeams ? parseInt(maxTeams) : null,
         prize: prize ? parseInt(prize) : null,
         rules: rules || null,
         discussion: discussion || null,
-        currentTeams: 0, // ✅ всегда начинаем с нуля
+      },
+      include: {
+        registrations: true,
+        division: true,
       },
     });
 
-    res.status(201).json(tournament);
+    res.status(201).json({
+      ...tournament,
+      currentTeams: 0, // ⚡ при создании всегда 0
+    });
   } catch (err) {
     console.error("Ошибка при создании турнира:", err);
     res.status(500).json({ error: "Ошибка сервера" });
@@ -53,7 +59,6 @@ router.get("/", async (req, res) => {
       },
     });
 
-    // ⚡️ добавляем поле currentTeams
     const result = tournaments.map((t) => ({
       ...t,
       currentTeams: t.registrations.filter((r) => r.status === "registered").length,
@@ -79,9 +84,7 @@ router.get("/:id", async (req, res) => {
     const tournament = await prisma.tournament.findUnique({
       where: { id: tournamentId },
       include: {
-        registrations: {
-          include: { team: true },
-        },
+        registrations: { include: { team: true } },
         matches: { include: { teamA: true, teamB: true } },
         division: true,
         complaints: true,
@@ -95,7 +98,6 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Турнир не найден" });
     }
 
-    // ⚡️ динамический подсчёт команд
     const currentTeams = tournament.registrations.filter(
       (r) => r.status === "registered"
     ).length;
@@ -110,7 +112,6 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-
 /**
  * 📌 Обновить турнир (только админ)
  */
@@ -124,9 +125,15 @@ router.patch("/:id", auth, isAdmin, async (req, res) => {
     const tournament = await prisma.tournament.update({
       where: { id: tournamentId },
       data: req.body,
+      include: { registrations: true },
     });
 
-    res.json(tournament);
+    res.json({
+      ...tournament,
+      currentTeams: tournament.registrations.filter(
+        (r) => r.status === "registered"
+      ).length,
+    });
   } catch (err) {
     console.error("Ошибка при обновлении турнира:", err);
     res.status(500).json({ error: "Ошибка сервера" });
