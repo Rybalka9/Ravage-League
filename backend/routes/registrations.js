@@ -2,12 +2,16 @@
 const express = require("express");
 const prisma = require("../prismaClient");
 const auth = require("../middleware/auth");
+const isAdmin = require("../middleware/isAdmin"); // для админских операций при необходимости
 
 const router = express.Router();
 
 /**
  * POST /registrations/:tournamentId
- * Зарегистрировать команду в турнире
+ * body: { teamId }
+ * Только капитан команды может регистрировать команду в турнире.
+ * Регистрация закрывается за 1 час до старта (deadline).
+ * Если турнир заполнен -> добавляем в waitlist.
  */
 router.post("/:tournamentId", auth, async (req, res) => {
   const tournamentId = parseInt(req.params.tournamentId);
@@ -17,9 +21,11 @@ router.post("/:tournamentId", auth, async (req, res) => {
   if (!teamId) return res.status(400).json({ error: "teamId required" });
 
   try {
+    // загружаем турнир и команду
     const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
     if (!tournament) return res.status(404).json({ error: "Tournament not found" });
 
+    // дедлайн: 1 час до старта
     const deadline = new Date(tournament.startDate);
     deadline.setHours(deadline.getHours() - 1);
     if (new Date() > deadline) {
@@ -30,86 +36,111 @@ router.post("/:tournamentId", auth, async (req, res) => {
     if (!team) return res.status(404).json({ error: "Team not found" });
     if (team.banned) return res.status(403).json({ error: "Team banned" });
 
+    // только капитан (или админ) может регать команду
     const captain = await prisma.teamMembership.findFirst({
       where: { teamId, userId: user.id, role: "captain", leftAt: null }
     });
-    if (!captain) return res.status(403).json({ error: "Only team captain can register the team" });
+    if (!captain && user.role !== "admin") {
+      return res.status(403).json({ error: "Only team captain can register the team" });
+    }
 
+    // команда должна принадлежать дивизиону турнира (если требуется)
     if (team.divisionId !== tournament.divisionId) {
       return res.status(400).json({ error: "Team division mismatch for this tournament" });
     }
 
-    const existing = await prisma.tournamentRegistration.findFirst({
-      where: { tournamentId, teamId }
-    });
-    if (existing) return res.status(409).json({ error: "Team already registered" });
-
-    const registeredCount = await prisma.tournamentRegistration.count({
-      where: { tournamentId, status: "registered" }
-    });
-
-    if (tournament.maxTeams && registeredCount >= tournament.maxTeams) {
-      const wait = await prisma.tournamentRegistration.create({
-        data: { tournamentId, teamId, status: "waitlisted" }
+    // атомарный блок: проверить, создать регистрацию или waitlist
+    const result = await prisma.$transaction(async (tx) => {
+      // есть ли уже регистрация
+      const existing = await tx.tournamentRegistration.findFirst({
+        where: { tournamentId, teamId }
       });
-      return res.status(200).json({ message: "Tournament full, team added to waitlist", registration: wait });
+      if (existing) {
+        throw { status: 409, message: "Team already registered or in waitlist" };
+      }
+
+      // сколько уже зарегистрировано
+      const registeredCount = await tx.tournamentRegistration.count({
+        where: { tournamentId, status: "registered" }
+      });
+
+      if (tournament.maxTeams && registeredCount >= tournament.maxTeams) {
+        // турнир заполнён -> добавляем в waitlist
+        const wait = await tx.tournamentRegistration.create({
+          data: { tournamentId, teamId, status: "waitlisted" }
+        });
+        return { waitlist: true, registration: wait };
+      } else {
+        const reg = await tx.tournamentRegistration.create({
+          data: { tournamentId, teamId, status: "registered" }
+        });
+        return { waitlist: false, registration: reg };
+      }
+    });
+
+    if (result.waitlist) {
+      return res.status(200).json({ message: "Tournament full, team added to waitlist", registration: result.registration });
+    } else {
+      return res.status(201).json(result.registration);
     }
-
-    const reg = await prisma.tournamentRegistration.create({
-      data: { tournamentId, teamId, status: "registered" }
-    });
-
-    // ✅ Увеличиваем currentTeams
-    await prisma.tournament.update({
-      where: { id: tournamentId },
-      data: { currentTeams: { increment: 1 } }
-    });
-
-    return res.status(201).json(reg);
   } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
     console.error("POST /registrations error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
 
 /**
- * DELETE /registrations/:id
- * Отмена регистрации (капитан или админ)
+ * DELETE /registrations/:tournamentId/:teamId
+ * Отмена регистрации команды (капитан команды или админ).
+ * Автоматически поднимает первого в waitlist (FIFO) в registered если место освободилось.
  */
-router.delete("/:id", auth, async (req, res) => {
-  const regId = parseInt(req.params.id);
+router.delete("/:tournamentId/:teamId", auth, async (req, res) => {
+  const tournamentId = parseInt(req.params.tournamentId);
+  const teamId = parseInt(req.params.teamId);
+  const user = req.user;
 
   try {
-    const registration = await prisma.tournamentRegistration.findUnique({
-      where: { id: regId },
-      include: { team: true }
-    });
-
-    if (!registration) return res.status(404).json({ error: "Registration not found" });
-
-    const user = req.user;
+    // проверим полномочия: капитан или админ
     const captain = await prisma.teamMembership.findFirst({
-      where: { teamId: registration.teamId, userId: user.id, role: "captain", leftAt: null }
+      where: { teamId, userId: user.id, role: "captain", leftAt: null }
+    });
+    if (!captain && user.role !== "admin") {
+      return res.status(403).json({ error: "Only team captain or admin can withdraw registration" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const reg = await tx.tournamentRegistration.findFirst({
+        where: { tournamentId, teamId, status: "registered" }
+      });
+      if (!reg) {
+        throw { status: 404, message: "Registration not found (or not active)" };
+      }
+
+      // помечаем как withdrawn (сохраняем историю)
+      await tx.tournamentRegistration.update({
+        where: { id: reg.id },
+        data: { status: "withdrawn" }
+      });
+
+      // авто-подъём первого waitlisted
+      const next = await tx.tournamentRegistration.findFirst({
+        where: { tournamentId, status: "waitlisted" },
+        orderBy: { id: "asc" }
+      });
+      if (next) {
+        await tx.tournamentRegistration.update({
+          where: { id: next.id },
+          data: { status: "registered" }
+        });
+      }
     });
 
-    if (!captain && user.role !== "admin") {
-      return res.status(403).json({ error: "Only captain or admin can remove registration" });
-    }
-
-    await prisma.tournamentRegistration.delete({ where: { id: regId } });
-
-    // ✅ Уменьшаем currentTeams, если команда была реально зарегистрирована
-    if (registration.status === "registered") {
-      await prisma.tournament.update({
-        where: { id: registration.tournamentId },
-        data: { currentTeams: { decrement: 1 } }
-      });
-    }
-
-    return res.json({ message: "Registration removed" });
+    res.json({ message: "Registration withdrawn (and waitlist promoted if any)" });
   } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
     console.error("DELETE /registrations error:", err);
-    return res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 

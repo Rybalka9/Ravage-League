@@ -1,9 +1,7 @@
-// frontend/pages/tournaments/[id].js
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import toast from "react-hot-toast";
-import Link from "next/link";
 
 export default function TournamentPage() {
   const router = useRouter();
@@ -11,9 +9,12 @@ export default function TournamentPage() {
 
   const [tournament, setTournament] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [teams, setTeams] = useState([]);
+  const [selectedTeam, setSelectedTeam] = useState("");
 
   useEffect(() => {
     if (id) fetchTournament();
+    fetchMyTeams();
   }, [id]);
 
   const fetchTournament = async () => {
@@ -28,12 +29,22 @@ export default function TournamentPage() {
     }
   };
 
-  const handleRegister = async () => {
+  const fetchMyTeams = async () => {
     try {
-      const teamId = prompt("Введите ID вашей команды для регистрации:");
-      if (!teamId) return;
+      const res = await api.get("/teams/my");
+      setTeams(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-      await api.post(`/registrations/${id}`, { teamId: parseInt(teamId) });
+  const handleRegister = async () => {
+    if (!selectedTeam) {
+      toast.error("Выберите команду для регистрации!");
+      return;
+    }
+    try {
+      await api.post(`/registrations/${id}`, { teamId: parseInt(selectedTeam) });
       toast.success("Вы зарегистрировались в турнир!");
       fetchTournament();
     } catch (err) {
@@ -42,8 +53,8 @@ export default function TournamentPage() {
     }
   };
 
-  if (loading) return <p className="p-8">Загрузка...</p>;
-  if (!tournament) return <p className="p-8">Турнир не найден</p>;
+  if (loading) return <p className="p-8 text-white">Загрузка...</p>;
+  if (!tournament) return <p className="p-8 text-white">Турнир не найден</p>;
 
   const progress =
     tournament.maxTeams > 0
@@ -51,23 +62,18 @@ export default function TournamentPage() {
       : 0;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8 font-sans">
-      <div className="bg-white p-6 rounded-2xl shadow-md max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold text-blue-700 mb-4">
-          {tournament.name}
-        </h1>
+    <div className="min-h-screen bg-gradient-to-b from-[#0a1f33] via-[#0b3d2e] to-[#122b42] p-8 font-sans text-white">
+      <div className="max-w-4xl mx-auto">
+        {/* 🔥 Шапка */}
+        <div className="bg-gradient-to-r from-green-700 to-blue-700 p-8 rounded-2xl shadow-lg mb-8">
+          <h1 className="text-4xl font-bold mb-2">{tournament.name}</h1>
+          <p className="opacity-80">
+            {tournament.division?.name} • {tournament.format} • {tournament.type}
+          </p>
+        </div>
 
         {/* 📌 Информация */}
-        <div className="space-y-2 mb-6">
-          <p>
-            <b>Дивизион:</b> {tournament.division?.name}
-          </p>
-          <p>
-            <b>Формат:</b> {tournament.format}
-          </p>
-          <p>
-            <b>Тип:</b> {tournament.type}
-          </p>
+        <div className="bg-[#0f1e2e] p-6 rounded-xl shadow mb-6 space-y-2">
           <p>
             <b>Статус:</b> {tournament.status}
           </p>
@@ -88,54 +94,69 @@ export default function TournamentPage() {
           )}
         </div>
 
-        {/* 📌 Прогресс заполненности */}
-        <div className="mb-6">
-          <p className="mb-2 font-semibold">
-            Команды: {tournament.currentTeams}/{tournament.maxTeams || "∞"}
-          </p>
-          {tournament.maxTeams && (
-            <div className="w-full bg-gray-200 rounded-full h-4">
+        {/* 📌 Прогресс */}
+        {tournament.maxTeams && (
+          <div className="bg-[#0f1e2e] p-6 rounded-xl shadow mb-6">
+            <p className="mb-2 font-semibold">
+              Команды: {tournament.currentTeams}/{tournament.maxTeams}
+            </p>
+            <div className="w-full bg-gray-700 rounded-full h-4">
               <div
                 className="bg-green-500 h-4 rounded-full transition-all"
                 style={{ width: `${progress}%` }}
               />
             </div>
-          )}
-        </div>
-
-        {/* 📌 Кнопка регистрации */}
-        {tournament.status === "upcoming" && (
-          <button
-            onClick={handleRegister}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
-          >
-            Зарегистрировать команду
-          </button>
+          </div>
         )}
 
-        {/* 📌 Список зарегистрированных команд */}
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">
-            Зарегистрированные команды
-          </h2>
+        {/* 📌 Регистрация */}
+        {tournament.status === "upcoming" && (
+          <div className="bg-[#0f1e2e] p-6 rounded-xl shadow mb-6">
+            <h2 className="text-lg font-semibold mb-3">Регистрация</h2>
+            <select
+              value={selectedTeam}
+              onChange={(e) => setSelectedTeam(e.target.value)}
+              className="bg-gray-800 border border-gray-600 rounded px-3 py-2 mr-3"
+            >
+              <option value="">-- Выберите команду --</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleRegister}
+              className="bg-green-600 px-5 py-2 rounded-lg hover:bg-green-700 transition"
+            >
+              Зарегистрировать
+            </button>
+          </div>
+        )}
+
+        {/* 📌 Список команд */}
+        <div className="bg-[#0f1e2e] p-6 rounded-xl shadow mb-6">
+          <h2 className="text-xl font-semibold mb-4">Команды</h2>
           {tournament.registrations.length === 0 ? (
-            <p className="text-gray-500">Пока нет команд</p>
+            <p className="text-gray-400">Пока нет команд</p>
           ) : (
             <ul className="space-y-2">
               {tournament.registrations.map((reg) => (
                 <li
                   key={reg.id}
-                  className="border p-3 rounded-lg flex justify-between"
+                  className="flex justify-between items-center bg-[#182c3d] p-3 rounded-lg"
                 >
                   <span>{reg.team.name}</span>
                   <span
                     className={`px-2 py-1 text-sm rounded ${
                       reg.status === "registered"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700"
+                        ? "bg-green-600 text-white"
+                        : "bg-yellow-600 text-white"
                     }`}
                   >
-                    {reg.status === "registered" ? "✅ В игре" : "⏳ В листе ожидания"}
+                    {reg.status === "registered"
+                      ? "✅ В игре"
+                      : "⏳ В листе ожидания"}
                   </span>
                 </li>
               ))}
@@ -145,9 +166,11 @@ export default function TournamentPage() {
 
         {/* 📌 Правила */}
         {tournament.rules && (
-          <div className="mt-8">
+          <div className="bg-[#0f1e2e] p-6 rounded-xl shadow">
             <h2 className="text-xl font-semibold mb-2">Правила турнира</h2>
-            <p className="whitespace-pre-line">{tournament.rules}</p>
+            <p className="whitespace-pre-line text-gray-300">
+              {tournament.rules}
+            </p>
           </div>
         )}
       </div>

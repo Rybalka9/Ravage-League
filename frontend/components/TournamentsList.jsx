@@ -25,7 +25,7 @@ export default function TournamentsList() {
 
   if (loading) {
     return (
-      <div className="bg-white p-6 rounded-2xl shadow-md mb-8 text-center">
+      <div className="bg-[#0f1e2e] p-6 rounded-2xl shadow-md mb-8 text-center text-white">
         Загрузка турниров...
       </div>
     );
@@ -33,28 +33,28 @@ export default function TournamentsList() {
 
   if (!tournaments.length) {
     return (
-      <div className="bg-white p-6 rounded-2xl shadow-md mb-8 text-center text-gray-500">
+      <div className="bg-[#0f1e2e] p-6 rounded-2xl shadow-md mb-8 text-center text-gray-300">
         Турниры пока не созданы
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-md mb-8">
-      <h2 className="text-2xl font-semibold mb-4">🔥 Ближайшие турниры</h2>
-      <ul className="space-y-3">
+    <div className="bg-[#0f1e2e] p-6 rounded-2xl shadow-md mb-8 text-white">
+      <h2 className="text-2xl font-bold mb-6 text-green-400">🔥 Ближайшие турниры</h2>
+      <ul className="space-y-4">
         {tournaments.map((tournament) => (
           <li
             key={tournament.id}
-            className="border p-4 rounded-lg flex justify-between items-center"
+            className="bg-[#182c3d] border border-gray-700 p-5 rounded-xl flex justify-between items-center hover:border-green-500 transition"
           >
             <div>
-              <h3 className="font-bold text-lg">{tournament.name}</h3>
-              <p className="text-sm text-gray-600">
+              <h3 className="font-bold text-lg text-white">{tournament.name}</h3>
+              <p className="text-sm text-gray-400">
                 Дивизион: {tournament.division?.name || "—"} | Формат:{" "}
                 {tournament.format}
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-400">
                 {tournament.startDate
                   ? new Date(tournament.startDate).toLocaleDateString()
                   : "Дата не указана"}{" "}
@@ -63,17 +63,17 @@ export default function TournamentsList() {
                   ? new Date(tournament.endDate).toLocaleDateString()
                   : "?"}
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-400">
                 Зарегистрировано: {tournament.registrations?.length || 0}/
                 {tournament.maxTeams || "∞"}
               </p>
               <span
                 className={`inline-block mt-2 px-3 py-1 text-xs font-semibold rounded-full ${
                   tournament.status === "upcoming"
-                    ? "bg-yellow-200 text-yellow-800"
+                    ? "bg-yellow-600 text-white"
                     : tournament.status === "ongoing"
-                    ? "bg-green-200 text-green-800"
-                    : "bg-gray-200 text-gray-800"
+                    ? "bg-green-600 text-white"
+                    : "bg-gray-600 text-white"
                 }`}
               >
                 {tournament.status || "upcoming"}
@@ -81,7 +81,7 @@ export default function TournamentsList() {
             </div>
             <Link
               href={`/tournaments/${tournament.id}`}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
             >
               Подробнее
             </Link>

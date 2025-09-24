@@ -24,7 +24,7 @@ router.get("/", async (req, res) => {
 
 // 📌 Создать новый дивизион (только админ)
 router.post("/", auth, isAdmin, async (req, res) => {
-  const { name, prize, maxTeams, description } = req.body;
+  const { name, maxTeams, description } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: "Укажите название дивизиона" });
@@ -34,15 +34,14 @@ router.post("/", auth, isAdmin, async (req, res) => {
     const newDivision = await prisma.division.create({
       data: {
         name,
-        prize: prize ? parseInt(prize) : null,
-        maxTeams: maxTeams ? parseInt(maxTeams) : null,
+        maxTeams: maxTeams ? parseInt(maxTeams) : 0,
         description: description || null,
       },
     });
     res.json(newDivision);
   } catch (err) {
     console.error("Ошибка при создании дивизиона:", err);
-    res.status(500).json({ error: "Ошибка сервера" });
+    res.status(500).json({ error: err.message || "Ошибка сервера" });
   }
 });
 
